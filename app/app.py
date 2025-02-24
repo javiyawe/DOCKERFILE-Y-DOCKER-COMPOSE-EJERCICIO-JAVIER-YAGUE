@@ -11,10 +11,37 @@ db = SQLAlchemy(app)
 # Configuración de Redis
 redis_client = redis.Redis(host='redis', port=6379)
 
-# Ruta básica de prueba
-@app.route('/')
-def hello():
-    return "Hello, World!"
+# Modelo de ejemplo
+class Item(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.String(120))
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    def __repr__(self):
+        return f'<Item {self.name}>'
+
+# Ruta para crear un item
+@app.route('/item/<name>')
+def create_item(name):
+    item = Item(name=name)
+    db.session.add(item)
+    db.session.commit()
+    return f"Item {name} created!"
+
+
+@app.route('/cached/<name>')
+def get_cached_item(name):
+    # Intentar obtener del caché
+    cached = redis_client.get(name)
+    
+    if cached:
+        return f"From cache: {cached.decode('utf-8')}"
+    
+    # Si no está en caché, buscar en la base de datos
+    item = Item.query.filter_by(name=name).first()
+    if item:
+        # Guardar en caché para futuras consultas
+        redis_client.setex(name, 3600, item.name)  # Expira en 1 hora
+        return f"From database: {item.name}"
+    
+    return "Item not found"
